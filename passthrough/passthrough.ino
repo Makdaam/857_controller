@@ -1,4 +1,7 @@
 #include <SoftwareSerial.h>
+//based completly on Arduino SoftwareSerial tutorial
+//CC SA
+//https://www.arduino.cc/en/Tutorial/SoftwareSerialExample
 
 SoftwareSerial mySerial(10, 11); // RX, TX
 

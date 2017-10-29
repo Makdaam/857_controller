@@ -1,28 +1,45 @@
 #include <SoftwareSerial.h>
+//Copyright Leszek Jakubowski 2017
+//Distributed under Apache License 2.0
 
-//pin which pulls TUNE do Ground when low
-int pin_tune = 13;
+//Please read the README.md before using this code, it's about the safety of your radio
+
+//pin which controls the LED
+int pin_led = 13;
 int pin = 0;
+//pin connected to "white/blue" on the tuner, output 0 to start tune
+int pin_start = 5;
+//pin connected to the "brown/green" on the tuner, input 1 when tune done, bridged to PTT+tone in the radio
+int pin_tuned = 6;
+//pin connected to a button, button grounds the pin
+int pin_button0 = 7;
+
 byte a;
 byte b;
 byte c;
 int addr = 0;
 int r;
+int tune_in_progress = 0;
 
 SoftwareSerial catSerial(3, 2); // RX, TX
 
 // the setup routine runs once when you press reset:
 void setup() {                
-  // initialize the TUNE pin
-  digitalWrite(pin_tune, HIGH);
-  pinMode(pin_tune, OUTPUT);
-
+  // initialize the pins
+  digitalWrite(pin_led, HIGH);
+  digitalWrite(pin_start, HIGH);
+  digitalWrite(pin_tuned, HIGH);
+  digitalWrite(pin_button0, HIGH);
+  pinMode(pin_led, OUTPUT);
+  pinMode(pin_start, OUTPUT);
+  pinMode(pin_tuned, INPUT);
+  pinMode(pin_button0, INPUT);
   // initialize Command serial
   Serial.begin(57600);
   while (!Serial) {
     ;
   }
-  Serial.println("END OF LINE");
+  Serial.println("READY");
   // initialize the CAT serial
   catSerial.begin(9600);
   
@@ -43,7 +60,8 @@ byte readCat()
   unsigned long start = millis();
   while (catSerial.available() == 0 && millis() - 1000 < start) {
   }
-  return catSerial.read();
+  return catSerial.read();
+
 }
 
 void clearCat()
@@ -79,7 +97,7 @@ void writeEEPROM(int address, byte value) {
   if (r==0) {
     a = value;
     sendCat((address >> 8) & 0xFF, (address &0xFF), value, b, 0xBC);
-    delay(100); // give the radio some time to write the value
+    delay(100); // give the radio some time to write the value, 100ms determined experimentally
     r = verifyEEPROM(address);
     if (r==1) {
       Serial.println("MEMORY CORRUPTED");
@@ -91,15 +109,56 @@ void writeEEPROM(int address, byte value) {
   Serial.println("Written");
 }
 
+void tune_proc() {
+  if (tune_in_progress == 0){
+    //set flag
+    tune_in_progress = 1;
+    //set LED
+    digitalWrite(pin_led, LOW);
+    byte original_power;
+    //read power - address 155 decimal is where the TX Power is stored
+    r= readEEPROM(155);
+    Serial.println("Tuning");
+    original_power = a;
+    if(r!=0)
+    {
+      Serial.println("ERROR tune_proc read power");
+      return;
+    }
+    //set power to 8W
+    writeEEPROM(155,8);
+    //start tune
+    digitalWrite(pin_start, LOW);
+    //wait for tune done or interrupt
+    delay(1000);
+    digitalWrite(pin_start, HIGH);
+    r = digitalRead(pin_tuned);
+    while(r=0)
+    {
+      delay(1000);
+      r = digitalRead(pin_tuned);
+    }
+    //set power to original value
+    writeEEPROM(155,original_power);
+    //disable flag
+    tune_in_progress = 0;
+  }
+}
 // the loop routine runs over and over again forever:
 void loop() {
+  //blink the led
   if (pin)
   {
     pin = 0;
   } else {
     pin = 1;
   }
-  digitalWrite(pin_tune, pin);
+  digitalWrite(pin_led, pin);
+  //check if button pressed, tune if it is
+  if (digitalRead(pin_button0) == 0){
+    tune_proc();
+  }
+  //change to interrupts later
   delay(500);
 }
 
@@ -107,8 +166,8 @@ void serialEvent() {
   while (Serial.available()) {
     // get the new byte:
     char inChar = (char)Serial.read(); 
-
     if (inChar == 's') {
+    //scan all addresses and output their value
       for (addr=0; addr<7412; addr+=2) {
         r = readEEPROM(addr);
         if (r==0) {
@@ -124,8 +183,9 @@ void serialEvent() {
           Serial.print(",");
           Serial.print("ERROR");
         }
-      }      
+      }
     } else if (inChar == 'r') {
+      //read a single byte (reads 2 bytes, prints them both), usage "r <decimal address>"
       delay(100);
       addr = Serial.parseInt();
       r = readEEPROM(addr);
@@ -143,6 +203,7 @@ void serialEvent() {
         Serial.print("ERROR");
       }
     } else if (inChar == 'w') {
+      //write a single byte, usage "w <decimal address> <decimal value>"
       delay(100);
       addr = Serial.parseInt();
       r = Serial.parseInt();
@@ -156,7 +217,11 @@ void serialEvent() {
         return;        
       }
       writeEEPROM(addr,(byte)(r & 0xFF));
+    } else if (inChar == 't') {
+      //run tuning without the need for a button
+      tune_proc();
     }
   }
+  Serial.println(">");
 }
 
