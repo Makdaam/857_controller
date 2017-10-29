@@ -26,14 +26,14 @@ SoftwareSerial catSerial(3, 2); // RX, TX
 // the setup routine runs once when you press reset:
 void setup() {                
   // initialize the pins
-  digitalWrite(pin_led, HIGH);
-  digitalWrite(pin_start, HIGH);
-  digitalWrite(pin_tuned, HIGH);
-  digitalWrite(pin_button0, HIGH);
   pinMode(pin_led, OUTPUT);
+  digitalWrite(pin_led, HIGH);
   pinMode(pin_start, OUTPUT);
+  digitalWrite(pin_start, HIGH);
   pinMode(pin_tuned, INPUT);
+  digitalWrite(pin_tuned, LOW);
   pinMode(pin_button0, INPUT);
+  digitalWrite(pin_button0, HIGH);
   // initialize Command serial
   Serial.begin(57600);
   while (!Serial) {
